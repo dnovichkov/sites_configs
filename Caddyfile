@@ -1,0 +1,14 @@
+# dz-tracker.ru -> порт 3001
+dz-tracker.ru {
+    reverse_proxy host.docker.internal:3001
+}
+
+# uchim-stihi.ru -> порт 3000
+uchim-stihi.ru {
+    reverse_proxy host.docker.internal:3000
+}
+
+# Шаблон для будущих сайтов:
+# новый-домен.ru {
+#     reverse_proxy host.docker.internal:ПОРТ
+# }

@@ -10,9 +10,26 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - web
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  projects-placeholder:
+    image: nginx:alpine
+    container_name: projects-placeholder
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3005:80"
+    volumes:
+      - ./placeholder:/usr/share/nginx/html:ro
+    networks:
+      - web
 
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  web:
+    external: true

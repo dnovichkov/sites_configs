@@ -1,14 +1,25 @@
-# dz-tracker.ru -> порт 3001
+# Основные домены
 dz-tracker.ru {
     reverse_proxy host.docker.internal:3001
 }
 
-# uchim-stihi.ru -> порт 3000
 uchim-stihi.ru {
     reverse_proxy host.docker.internal:3000
 }
 
-# Шаблон для будущих сайтов:
-# новый-домен.ru {
-#     reverse_proxy host.docker.internal:ПОРТ
-# }
+# Субдомены DMDP
+excel2md.dmdp.ru {
+    reverse_proxy host.docker.internal:3002
+}
+
+netwalkgame.dmdp.ru {
+    reverse_proxy host.docker.internal:3003
+}
+
+gift-planner.dmdp.ru {
+    reverse_proxy host.docker.internal:3004
+}
+
+projects.dmdp.ru {
+    reverse_proxy host.docker.internal:3005
+}

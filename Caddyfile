@@ -1,25 +1,25 @@
 # Основные домены
 dz-tracker.ru {
-    reverse_proxy host.docker.internal:3001
+    reverse_proxy studyflow:80
 }
 
 uchim-stihi.ru {
-    reverse_proxy host.docker.internal:3000
+    reverse_proxy learn-poetry:3000
 }
 
 # Субдомены DMDP
 excel2md.dmdp.ru {
-    reverse_proxy host.docker.internal:3002
+    reverse_proxy excel2md-nginx:80
 }
 
 netwalkgame.dmdp.ru {
-    reverse_proxy host.docker.internal:3003
+    reverse_proxy netwalk-game:80
 }
 
 gift-planner.dmdp.ru {
-    reverse_proxy host.docker.internal:3004
+    reverse_proxy gift-planner:80
 }
 
 projects.dmdp.ru {
-    reverse_proxy host.docker.internal:3005
+    reverse_proxy projects-placeholder:80
 }

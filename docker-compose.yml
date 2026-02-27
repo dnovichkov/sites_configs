@@ -10,6 +10,10 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      # Static sites
+      - ../english_training:/srv/static/english-training:ro
+      - ../math_training:/srv/static/math-training:ro
+      - ../russkij-yazyk-2-klass-kanakina-trenazhery:/srv/static/russkij-yazyk:ro
     networks:
       - web
     extra_hosts:
@@ -20,7 +24,7 @@ services:
     container_name: projects-placeholder
     restart: unless-stopped
     ports:
-      - "3005:80"
+      - "127.0.0.1:3005:80"
     volumes:
       - ./placeholder:/usr/share/nginx/html:ro
     networks:

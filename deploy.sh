@@ -147,15 +147,16 @@ compose() {
 # удаляются, если ими не пользуется ни один контейнер. Плюс слои без тегов.
 KEEP_BUILDS=3
 prune_images() {
-  local repo tag
-  docker images --format '{{.Repository}}' \
-    --filter "reference=ghcr.io/$GITHUB_OWNER/*" --filter "reference=ghcr.io/$GITHUB_OWNER/*/*" |
-    sort -u | while read -r repo; do
+  local repo tag repos
+  # «|| true»: у образа может не быть ни одного sha-тега, и grep тогда вернёт 1 —
+  # при set -e и pipefail это оборвало бы скрипт уже после успешного деплоя.
+  repos=$(docker images --format '{{.Repository}}' \
+    --filter "reference=ghcr.io/$GITHUB_OWNER/*" --filter "reference=ghcr.io/$GITHUB_OWNER/*/*" | sort -u) || true
+  for repo in $repos; do
     # docker images выводит теги от новых к старым.
-    docker images "$repo" --format '{{.Tag}}' | grep -E "$SHA_RE" | tail -n +$((KEEP_BUILDS + 1)) |
-      while read -r tag; do
-        docker rmi "$repo:$tag" >/dev/null 2>&1 || true
-      done
+    for tag in $(docker images "$repo" --format '{{.Tag}}' | grep -E "$SHA_RE" | tail -n +$((KEEP_BUILDS + 1)) || true); do
+      docker rmi "$repo:$tag" >/dev/null 2>&1 || true
+    done
   done
   docker image prune --force >/dev/null 2>&1 || true
 }

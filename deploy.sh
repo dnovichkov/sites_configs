@@ -142,6 +142,24 @@ compose() {
   (cd "$PROJECT_DIR" && docker compose "${COMPOSE_FILES[@]}" "$@")
 }
 
+# На сервере живут и чужие проекты, поэтому чистим только свои образы из ghcr.io:
+# у каждого остаются три последние сборки (на них можно откатиться), остальные
+# удаляются, если ими не пользуется ни один контейнер. Плюс слои без тегов.
+KEEP_BUILDS=3
+prune_images() {
+  local repo tag
+  docker images --format '{{.Repository}}' \
+    --filter "reference=ghcr.io/$GITHUB_OWNER/*" --filter "reference=ghcr.io/$GITHUB_OWNER/*/*" |
+    sort -u | while read -r repo; do
+    # docker images выводит теги от новых к старым.
+    docker images "$repo" --format '{{.Tag}}' | grep -E "$SHA_RE" | tail -n +$((KEEP_BUILDS + 1)) |
+      while read -r tag; do
+        docker rmi "$repo:$tag" >/dev/null 2>&1 || true
+      done
+  done
+  docker image prune --force >/dev/null 2>&1 || true
+}
+
 ensure_network() {
   if ! docker network inspect web >/dev/null 2>&1; then
     docker network create web >/dev/null
@@ -386,8 +404,7 @@ main() {
     fi
   done
 
-  # Неиспользуемые образы старше недели: этого окна хватает, чтобы откатиться на прошлый sha.
-  docker image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true
+  prune_images
 
   printf '\n================================================\n'
   [ ${#deployed[@]} -gt 0 ] && ok "Готово (${#deployed[@]}): ${deployed[*]}"

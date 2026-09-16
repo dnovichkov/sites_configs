@@ -37,7 +37,7 @@ russkij-yazyk.dmdp.ru {
 # Инструменты
 
 money-envelope.dmdp.ru {
-	import proxy_with_api money-envelope-frontend:80 money-envelope-backend:8000
+	import proxy money-envelope-frontend:80
 }
 
 gift-planner.dmdp.ru {

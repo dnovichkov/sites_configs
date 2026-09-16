@@ -6,7 +6,7 @@ studyflow|image|main|docker-compose.prod.yml
 math_training|static|main|
 english_training|static|main|
 russkij-yazyk-2-klass-kanakina-trenazhery|static|main|
-money-envelope|build|main|docker-compose.prod.yml
+money-envelope|image|main|docker-compose.prod.yml
 gift-planner|image|main|docker-compose.prod.yml
 Excel2Markdown|image|master|docker-compose.prod.yml
 craft-picker|image|main|docker-compose.prod.yml

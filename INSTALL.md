@@ -122,7 +122,7 @@ workflow: *Settings* → *Actions* → *General* → *Access* →
 | craft-picker | — | Секреты читаются из `.env` рядом с compose-файлом; если они лежат в `.env.prod` — `ln -s .env.prod .env` |
 | studyflow | — | В `.env` должны быть `VITE_SUPABASE_*` (подставляются при старте контейнера). Umami поднимается, только если добавить `COMPOSE_PROFILES=analytics`, `UMAMI_DB_PASSWORD` и `UMAMI_APP_SECRET` |
 | Excel2Markdown | — | После первого удачного деплоя можно удалить ненужный том: `docker volume rm excel2markdown_static_files` |
-| money-envelope | Новая схема — в ветке `feature/client-side-envelope-mvp`; до её мержа сервер собирает `main` сам (`mode = "build"`) | После мержа: в `projects.toml` убрать `api` и `mode = "build"`, запустить `python build.py`. Том `money-envelope_redis_data` можно удалить |
+| money-envelope | — | Первый деплой новой версии уберёт старые backend и redis (`--remove-orphans`); потом можно удалить их том: `docker volume rm money-envelope_redis_data` |
 | netwalk_game, статические сайты | — | — |
 
 Нужен свежий Docker Compose (`docker compose version` — 2.24 или новее): `deploy.sh`

@@ -105,6 +105,12 @@ networks:
 CI проекта — сборка через общий workflow и деплой после неё:
 
 ```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:             # «Run workflow»: пересобрать и выкатить голову основной ветки
+
 jobs:
   # … тесты …
 
@@ -121,7 +127,7 @@ jobs:
 
   deploy:
     needs: [image]
-    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
     uses: dnovichkov/sites_configs/.github/workflows/deploy.yml@main
     secrets: inherit
 ```

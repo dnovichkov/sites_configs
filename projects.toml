@@ -120,13 +120,9 @@ category = "tools"
 icon = "money-envelope.svg"
 web = "money-envelope.dmdp.ru"
 upstream = "money-envelope-frontend:80"
-# Бэкенд есть только в старой версии из main. После мержа
-# feature/client-side-envelope-mvp: убрать api и переключить mode на image.
-api = "money-envelope-backend:8000"
 
 [project.deploy]
 repo = "money-envelope"
-mode = "build"
 
 [[project]]
 id = "gift-planner"

@@ -1,0 +1,201 @@
+# Реестр проектов — единственный источник правды для сервера и витрины.
+#
+# После любой правки запустите:   python build.py
+# Скрипт пересоберёт caddy/Caddyfile, compose.static.yml, deploy.list и site/index.html.
+# CI проверяет, что сгенерированные файлы не отстали от реестра (python build.py --check).
+#
+# Поля проекта
+#   id           уникальный идентификатор: латиница, цифры, дефис
+#   title        название на витрине
+#   description  одна фраза о том, что делает проект
+#   category     id одной из [[category]]
+#   icon         файл в site/icons/; без него рисуется буква из mark (или первая буква title)
+#   mark         1–3 символа для значка без картинки
+#   hidden       true — маршрут и деплой есть, а на витрине проекта нет
+#
+#   web          домен сайта: ссылка на витрине + блок в Caddyfile
+#   upstream     контейнер:порт в сети web, куда Caddy проксирует запросы
+#   api          контейнер:порт для /api/*, если бэкенд — отдельный контейнер
+#   aliases      старые домены, с которых делается постоянный редирект на web
+#   url          внешняя ссылка без маршрута на нашем сервере (GitHub Pages и т. п.)
+#   rustore      package name приложения в RuStore
+#
+#   [project.deploy]       как проект попадает на сервер
+#   repo         репозиторий github.com/<owner>/<repo>; так же называется каталог на сервере
+#   mode         image  — образы собирает CI, сервер делает pull (по умолчанию)
+#                build  — сервер собирает образы сам (для ещё не переведённых проектов)
+#                static — только git pull; Caddy раздаёт файлы из репозитория
+#   compose      compose-файл внутри репозитория (по умолчанию docker-compose.prod.yml)
+#   branch       ветка, которая деплоится (по умолчанию main)
+
+[site]
+host = "projects.dmdp.ru"
+title = "Проекты DMDP"
+lead = "Сайты и Android-приложения: тренажёры для школьников, полезные инструменты и игры."
+redirects = ["dmdp.ru", "www.dmdp.ru"]
+github = "dnovichkov"
+
+[[category]]
+id = "learning"
+title = "Обучение"
+
+[[category]]
+id = "tools"
+title = "Инструменты"
+
+[[category]]
+id = "games"
+title = "Игры и хобби"
+
+# ── Обучение ─────────────────────────────────────────────────────────────────
+
+[[project]]
+id = "uchim-stihi"
+title = "Учим стихи"
+description = "Помогает детям 3–12 лет выучить стихотворение к празднику: по шагам и в игровой форме."
+category = "learning"
+icon = "uchim-stihi.svg"
+web = "uchim-stihi.ru"
+upstream = "learn-poetry:3000"
+
+[project.deploy]
+repo = "learn-poetry"
+compose = "docker/docker-compose.prod.yml"
+
+[[project]]
+id = "studyflow"
+title = "StudyFlow"
+description = "Канбан-доска домашних заданий для школьников 10–17 лет и их родителей."
+category = "learning"
+icon = "studyflow.svg"
+web = "dz-tracker.ru"
+upstream = "studyflow:80"
+
+[project.deploy]
+repo = "studyflow"
+
+[[project]]
+id = "math-training"
+title = "Математика, 2 класс"
+description = "Тренажёры по учебнику Моро: состав числа, переход через десяток, задачи и геометрия."
+category = "learning"
+mark = "2+3"
+web = "math-training.dmdp.ru"
+
+[project.deploy]
+repo = "math_training"
+mode = "static"
+
+[[project]]
+id = "english-training"
+title = "Английский, 2 класс"
+description = "Тренажёры к учебнику «Английский в фокусе»: алфавит, слова, фразы и чтение."
+category = "learning"
+mark = "Ab"
+web = "english-training.dmdp.ru"
+
+[project.deploy]
+repo = "english_training"
+mode = "static"
+
+[[project]]
+id = "russkij-yazyk"
+title = "Русский язык, 2 класс"
+description = "Словарные слова по учебнику Канакиной — упражнения прямо в браузере, без регистрации."
+category = "learning"
+mark = "Аа"
+web = "russkij-yazyk.dmdp.ru"
+
+[project.deploy]
+repo = "russkij-yazyk-2-klass-kanakina-trenazhery"
+mode = "static"
+
+# ── Инструменты ──────────────────────────────────────────────────────────────
+
+[[project]]
+id = "money-envelope"
+title = "Money Envelope"
+description = "Конверт для денежного подарка с вашей фотографией и поздравлением: PDF для печати на A4."
+category = "tools"
+icon = "money-envelope.svg"
+web = "money-envelope.dmdp.ru"
+upstream = "money-envelope-frontend:80"
+# Бэкенд есть только в старой версии из main. После мержа
+# feature/client-side-envelope-mvp: убрать api и переключить mode на image.
+api = "money-envelope-backend:8000"
+
+[project.deploy]
+repo = "money-envelope"
+mode = "build"
+
+[[project]]
+id = "gift-planner"
+title = "Gift Planner"
+description = "Кому что подарить к празднику, сколько потратить и что осталось купить. Данные хранятся в браузере."
+category = "tools"
+icon = "gift-planner.png"
+web = "gift-planner.dmdp.ru"
+upstream = "gift-planner:80"
+
+[project.deploy]
+repo = "gift-planner"
+
+[[project]]
+id = "excel2markdown"
+title = "Excel2Markdown"
+description = "Превращает таблицы Excel в Markdown или JSON — все листы сразу, результат одним архивом."
+category = "tools"
+mark = "MD"
+web = "excel2markdown.dmdp.ru"
+upstream = "excel2md-nginx:80"
+aliases = ["excel2md.dmdp.ru"]
+
+[project.deploy]
+repo = "Excel2Markdown"
+branch = "master"
+
+[[project]]
+id = "tishina"
+title = "Тишина"
+description = "Измеритель уровня шума: без рекламы и трекеров, работает без интернета."
+category = "tools"
+icon = "tishina.png"
+rustore = "ru.dmdp.tishina"
+
+# ── Игры и хобби ─────────────────────────────────────────────────────────────
+
+[[project]]
+id = "craft-picker"
+title = "Конструктор поделок"
+description = "Отметьте материалы, которые есть дома, — сервис подберёт поделки по возрасту ребёнка."
+category = "games"
+mark = "✂"
+web = "craft-picker.dmdp.ru"
+upstream = "craft-picker-frontend:3000"
+api = "craft-picker-backend:8000"
+aliases = ["podelki.dmdp.ru"]
+
+[project.deploy]
+repo = "craft-picker"
+
+[[project]]
+id = "netwalk"
+title = "NetWalk"
+description = "Головоломка: поворачивайте кабели, чтобы подключить все компьютеры к серверу."
+category = "games"
+icon = "netwalk.svg"
+web = "netwalk-game.dmdp.ru"
+upstream = "netwalk-game:80"
+aliases = ["netwalkgame.dmdp.ru"]
+rustore = "com.netwalk.game"
+
+[project.deploy]
+repo = "netwalk_game"
+
+[[project]]
+id = "sudoku-craft"
+title = "Sudoku Craft"
+description = "Судоку с вариантными режимами и подсказками, которые учат решать. Работает без интернета."
+category = "games"
+icon = "sudoku-craft.png"
+rustore = "com.sudokucraft"

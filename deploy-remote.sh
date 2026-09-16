@@ -1,18 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
-# deploy-remote.sh — Trigger deployment on remote server from local machine
+# deploy-remote.sh — запускает deploy.sh на сервере со своей машины.
 #
-# Usage:
-#   ./deploy-remote.sh              Deploy all projects
-#   ./deploy-remote.sh <project>    Deploy specific project
-#   ./deploy-remote.sh --list       Show available projects
+#   ./deploy-remote.sh                 все проекты
+#   ./deploy-remote.sh <repo> [tag]    один проект
+#   ./deploy-remote.sh --list          список проектов
 #
-# Requires: SSH key added to ssh-agent (ssh-add ~/.ssh/your_key)
-#
+# Нужен ваш обычный SSH-доступ к серверу. Ключ CI для этого не подходит:
+# он ограничен forced command и умеет только «<repo> [sha]».
 
-SERVER="91.188.212.141"
-SERVER_USER="user"
+set -euo pipefail
+
+SERVER="${DEPLOY_HOST:-91.188.212.141}"
+SERVER_USER="${DEPLOY_USER:-user}"
 DEPLOY_SCRIPT="/home/user/projects/sites_configs/deploy.sh"
 
-# Forward SSH agent for git operations on server
-ssh -t -A "${SERVER_USER}@${SERVER}" "bash ${DEPLOY_SCRIPT} ${*:-all}"
+# Аргументы экранируются: удалённая сторона склеивает их в одну строку для shell.
+ssh -t "${SERVER_USER}@${SERVER}" "bash ${DEPLOY_SCRIPT} $(printf '%q ' "$@")"

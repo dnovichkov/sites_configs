@@ -1,224 +1,402 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
-# deploy.sh — Deploy pet projects on the server
+# deploy.sh — разворачивает проекты на сервере.
 #
-# Usage:
-#   ./deploy.sh              Deploy all projects
-#   ./deploy.sh <project>    Deploy specific project
-#   ./deploy.sh --list       Show available projects
+#   ./deploy.sh                  все проекты
+#   ./deploy.sh <repo> [tag]     один проект; tag — тег образа (по умолчанию latest),
+#                                полный sha заодно фиксирует и коммит репозитория
+#   ./deploy.sh --list           список проектов
+#   ./deploy.sh --ci             для SSH forced command: "<repo> [sha]" из $SSH_ORIGINAL_COMMAND
 #
+# Список проектов — deploy.list. Его генерирует build.py из projects.toml; руками не правится.
+#
+# Режимы:
+#   self    сам sites_configs: git → compose up → caddy reload. Выполняется перед любым деплоем,
+#           поэтому новый проект из реестра получает маршрут до того, как запустится.
+#   image   git → compose up --pull (образы собирает CI) → ждём healthcheck
+#   build   git → compose up --build (сборка на сервере — для ещё не переведённых проектов)
+#   static  git (файлы раздаёт Caddy)
+
 set -euo pipefail
 
-BASE_DIR="/home/user/projects"
-GITHUB_USER="dnovichkov"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+BASE_DIR="${DEPLOY_BASE_DIR:-$(dirname "$SCRIPT_DIR")}"
+readonly BASE_DIR
+readonly LIST_FILE="$SCRIPT_DIR/deploy.list"
+readonly GITHUB_OWNER="${GITHUB_OWNER:-dnovichkov}"
+# HTTPS не требует ssh-agent на сервере. Для приватных репозиториев нужен git credential helper
+# (см. INSTALL.md); вернуть SSH можно так: GIT_URL_TEMPLATE='git@github.com:%s/%s.git'.
+readonly GIT_URL_TEMPLATE="${GIT_URL_TEMPLATE:-https://github.com/%s/%s.git}"
+readonly LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pets-deploy.lock}"
+readonly WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-180}"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+readonly SELF_REPO="sites_configs"
+readonly SELF_ENTRY="$SELF_REPO|self|main|docker-compose.yml,compose.static.yml"
+readonly SHA_RE='^[0-9a-f]{40}$'
+readonly TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+readonly ARGS=("$@")
 
-log()  { echo -e "${BLUE}[deploy]${NC} $1"; }
-ok()   { echo -e "${GREEN}  ✓${NC} $1"; }
-warn() { echo -e "${YELLOW}  ⚠${NC} $1"; }
-err()  { echo -e "${RED}  ✗${NC} $1"; }
+readonly RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[1;33m' BLUE=$'\033[0;34m' NC=$'\033[0m'
 
-# Project definitions: name|compose_file|strategy|github_repo
-# strategy: "docker" = git pull + docker compose build + up
-#           "docker-nobuild" = git pull + docker compose up (no build, image pull)
-#           "static" = git pull only
-PROJECTS=(
-  "sites_configs|docker-compose.yml|docker-nobuild|sites_configs"
-  "craft-picker|docker-compose.prod.yml|docker|craft-picker"
-  "money-envelope|docker-compose.prod.yml|docker|money-envelope"
-  "Excel2Markdown|docker-compose.yml|docker|Excel2Markdown"
-  "learn-poetry|docker/docker-compose.yml|docker|learn-poetry"
-  "studyflow|docker-compose.yml|docker|studyflow"
-  "gift-planner|docker-compose.yml|docker|gift-planner"
-  "netwalk_game|docker-compose.yml|docker|netwalk_game"
-  "english_training||static|english_training"
-  "math_training||static|math_training"
-  "russkij-yazyk-2-klass-kanakina-trenazhery||static|russkij-yazyk-2-klass-kanakina-trenazhery"
-)
+log()  { printf '%s[deploy]%s %s\n' "$BLUE" "$NC" "$*"; }
+ok()   { printf '%s  ✓%s %s\n' "$GREEN" "$NC" "$*"; }
+warn() { printf '%s  ⚠%s %s\n' "$YELLOW" "$NC" "$*"; }
+err()  { printf '%s  ✗%s %s\n' "$RED" "$NC" "$*" >&2; }
+die()  { err "$*"; exit 1; }
+
+usage() { sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ── Список проектов ──────────────────────────────────────────────────────────
+
+ENTRIES=()
+
+load_list() {
+  [ -f "$LIST_FILE" ] || die "Нет $LIST_FILE — запустите python build.py и закоммитьте результат"
+  ENTRIES=()
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case "$line" in '' | '#'*) continue ;; esac
+    ENTRIES+=("$line")
+  done <"$LIST_FILE"
+}
+
+find_entry() {
+  local entry
+  for entry in "${ENTRIES[@]}"; do
+    if [ "${entry%%|*}" = "$1" ]; then
+      printf '%s\n' "$entry"
+      return 0
+    fi
+  done
+  return 1
+}
 
 show_list() {
-  echo "Available projects:"
-  echo ""
-  for entry in "${PROJECTS[@]}"; do
-    IFS='|' read -r name compose strategy repo <<< "$entry"
-    case "$strategy" in
-      docker)         label="Docker (build)" ;;
-      docker-nobuild) label="Docker (no build)" ;;
-      static)         label="Static files" ;;
-    esac
-    printf "  %-45s %s\n" "$name" "$label"
+  printf 'Проекты (deploy.list):\n\n'
+  printf '  %-45s %s\n' "$SELF_REPO" "self (Caddy и витрина)"
+  local entry repo mode branch files
+  for entry in "${ENTRIES[@]}"; do
+    IFS='|' read -r repo mode branch files <<<"$entry"
+    printf '  %-45s %s, %s%s\n' "$repo" "$mode" "$branch" "${files:+, $files}"
   done
-  echo ""
-  echo "Usage: ./deploy.sh [project-name|--list]"
+  printf '\n'
+}
+
+# ── Git ──────────────────────────────────────────────────────────────────────
+
+GIT_CHANGED=0
+
+# git_update <каталог> <repo> <ветка> [sha]
+# Приводит рабочую копию к голове ветки или к указанному коммиту из неё. Только fast-forward:
+# правки, сделанные прямо на сервере, останавливают деплой, а не теряются.
+git_update() {
+  local dir=$1 repo=$2 branch=$3 ref=${4:-}
+  local url
+  # shellcheck disable=SC2059  # шаблон задаётся переменной окружения намеренно
+  url=$(printf "$GIT_URL_TEMPLATE" "$GITHUB_OWNER" "$repo")
+
+  local before=""
+  if [ -d "$dir/.git" ]; then
+    before=$(git -C "$dir" rev-parse HEAD)
+  else
+    warn "Нет $dir — клонирую $url"
+    git clone --quiet --branch "$branch" "$url" "$dir"
+  fi
+  git -C "$dir" fetch --quiet "$url" "$branch"
+  if [ -n "$ref" ]; then
+    git -C "$dir" merge-base --is-ancestor "$ref" FETCH_HEAD ||
+      die "Коммит $ref не найден в ветке $branch — деплоятся только коммиты из неё"
+  else
+    ref=$(git -C "$dir" rev-parse FETCH_HEAD)
+  fi
+  if [ "$(git -C "$dir" branch --show-current)" != "$branch" ]; then
+    git -C "$dir" checkout --quiet "$branch" 2>/dev/null ||
+      git -C "$dir" checkout --quiet -b "$branch" "$ref"
+  fi
+  git -C "$dir" merge --quiet --ff-only "$ref" ||
+    die "В $dir нельзя перемотать $branch до $ref — есть локальные коммиты? (git -C $dir status)"
+
+  local head
+  head=$(git -C "$dir" rev-parse --short HEAD)
+  if [ -z "$before" ]; then
+    GIT_CHANGED=1
+    ok "Склонировано ($head)"
+  elif [ "$(git -C "$dir" rev-parse HEAD)" = "$before" ]; then
+    GIT_CHANGED=0
+    ok "Код не изменился ($head)"
+  else
+    GIT_CHANGED=1
+    ok "Код обновлён: $(git -C "$dir" rev-parse --short "$before") → $head"
+  fi
+}
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+
+PROJECT_DIR=""
+COMPOSE_FILES=()
+
+# docker compose в каталоге текущего проекта и с его compose-файлами.
+compose() {
+  (cd "$PROJECT_DIR" && docker compose "${COMPOSE_FILES[@]}" "$@")
 }
 
 ensure_network() {
-  if ! docker network inspect web &>/dev/null; then
-    log "Creating Docker network 'web'..."
-    docker network create web
-    ok "Network 'web' created"
+  if ! docker network inspect web >/dev/null 2>&1; then
+    docker network create web >/dev/null
+    ok "Создана docker-сеть web"
   fi
 }
 
-clone_if_missing() {
-  local name="$1"
-  local repo="$2"
-  local dir="$BASE_DIR/$name"
-
-  if [ ! -d "$dir" ]; then
-    warn "Directory $dir not found, cloning..."
-    git clone "git@github.com:${GITHUB_USER}/${repo}.git" "$dir"
-    ok "Cloned $repo"
-  fi
-}
-
-deploy_project() {
-  local name="$1"
-  local compose="$2"
-  local strategy="$3"
-  local repo="$4"
-  local dir="$BASE_DIR/$name"
-
-  echo ""
-  log "Deploying ${YELLOW}${name}${NC}..."
-
-  # Clone if missing
-  clone_if_missing "$name" "$repo"
-
-  # Git pull
-  cd "$dir"
-  local pull_output
-  pull_output=$(git pull 2>&1) || {
-    err "git pull failed: $pull_output"
-    return 1
-  }
-
-  if [ "$pull_output" = "Already up to date." ]; then
-    ok "Already up to date"
-    # If static site, nothing more to do
-    if [ "$strategy" = "static" ]; then
-      return 0
-    fi
-    # For Docker projects, still check if containers are running
-    if [ -n "$compose" ]; then
-      local running
-      running=$(docker compose -f "$compose" ps -q 2>/dev/null | wc -l)
-      if [ "$running" -gt 0 ]; then
-        ok "Containers already running ($running)"
+# Тег нашего образа (ghcr.io/<owner>/…), с которым сейчас работают контейнеры проекта.
+running_tag() {
+  local id ref
+  for id in $(compose ps -q 2>/dev/null || true); do
+    ref=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null) || continue
+    case "$ref" in
+      "ghcr.io/$GITHUB_OWNER/"*:*)
+        printf '%s\n' "${ref##*:}"
         return 0
-      fi
-      warn "Containers not running, starting..."
+        ;;
+    esac
+  done
+}
+
+# Что делать, если новые контейнеры не стали healthy за DEPLOY_WAIT_TIMEOUT секунд.
+#   $1 — репозиторий, $2 — тег, который выкатывали,
+#   $3 — тег, с которым проект работал до деплоя (пусто, если первый запуск
+#        или контейнеры были собраны на сервере, а не взяты из ghcr.io).
+# Доступно: compose <аргументы…> — docker compose этого проекта; IMAGE_TAG; warn/err.
+# Функция обязана вернуть ненулевой код: деплой не удался, и CI должен покраснеть,
+# даже если откат прошёл успешно.
+on_failed_rollout() {
+  local repo=$1 tag=$2 previous=$3
+  err "$repo: контейнеры с тегом $tag не стали healthy за ${WAIT_TIMEOUT}s"
+  # TODO(вы): решить, откатываться ли на $previous, и как это сделать.
+  return 1
+}
+
+deploy_image() {
+  local repo=$1 tag=$2
+  local previous image
+  previous=$(running_tag)
+  export IMAGE_TAG=$tag
+
+  log "Образы с тегом $tag${previous:+ (сейчас работает $previous)}"
+  # Свои образы проверяем в реестре всегда: CI мог пересобрать тот же sha, например после
+  # смены vars. Чужие (postgres, redis) качаем, только если их нет, — без внезапных обновлений баз.
+  for image in $(compose config --images); do
+    case "$image" in
+      "ghcr.io/$GITHUB_OWNER/"*) docker pull --quiet "$image" >/dev/null ;;
+    esac
+  done
+  if compose up -d --pull missing --no-build --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"; then
+    ok "Запущено"
+    return 0
+  fi
+  compose ps --all || true
+  compose logs --no-color --tail 40 || true
+  on_failed_rollout "$repo" "$tag" "$previous"
+}
+
+deploy_build() {
+  if [ "$GIT_CHANGED" = 0 ] && [ -n "$(compose ps -q --status running)" ]; then
+    ok "Контейнеры уже запущены — пересборка не нужна"
+    return 0
+  fi
+  compose up -d --build --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"
+  ok "Собрано и запущено"
+}
+
+deploy_self() {
+  # Каталоги статических сайтов монтируются в Caddy. Если их ещё нет, Docker создал бы
+  # пустые каталоги от root, и git clone в них потом не смог бы писать.
+  load_list
+  local entry repo mode branch files
+  for entry in "${ENTRIES[@]}"; do
+    IFS='|' read -r repo mode branch files <<<"$entry"
+    if [ "$mode" = static ] && [ ! -d "$BASE_DIR/$repo/.git" ]; then
+      git_update "$BASE_DIR/$repo" "$repo" "$branch"
     fi
+  done
+
+  compose up -d --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"
+  # Caddyfile и site/ смонтированы каталогами, так что reload видит новые файлы без перезапуска.
+  # Неизменившийся конфиг Caddy не применяет повторно.
+  docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+  ok "Caddy перечитал конфигурацию"
+}
+
+# deploy_one "<repo|mode|branch|files>" [tag]
+# Запускать только в подоболочке с set -e: см. run_isolated.
+deploy_one() {
+  local repo mode branch files tag=${2:-}
+  IFS='|' read -r repo mode branch files <<<"$1"
+
+  PROJECT_DIR="$BASE_DIR/$repo"
+  COMPOSE_FILES=()
+  local file
+  local -a file_list=()
+  [ -n "$files" ] && IFS=',' read -r -a file_list <<<"$files"
+  for file in "${file_list[@]}"; do
+    COMPOSE_FILES+=(-f "$file")
+  done
+
+  printf '\n'
+  log "${YELLOW}$repo${NC} — $mode${tag:+, $tag}"
+
+  local sha=""
+  [[ $tag =~ $SHA_RE ]] && sha=$tag
+  git_update "$PROJECT_DIR" "$repo" "$branch" "$sha"
+
+  case "$mode" in
+    self) deploy_self ;;
+    image) deploy_image "$repo" "${tag:-latest}" ;;
+    build) deploy_build ;;
+    static) ok "Файлы раздаёт Caddy — больше ничего не нужно" ;;
+    *) die "Неизвестный режим «$mode» в deploy.list" ;;
+  esac
+}
+
+# set -e не действует внутри функций, вызванных из if/&&/||. Поэтому каждый проект
+# разворачивается в отдельной подоболочке, запущенной вне условия: первая же ошибка
+# останавливает только этот проект, а статус забирается из $?.
+RUN_STATUS=0
+run_isolated() {
+  set +e
+  (
+    set -e
+    deploy_one "$@"
+  )
+  RUN_STATUS=$?
+  set -e
+}
+
+# ── Точка входа ──────────────────────────────────────────────────────────────
+
+acquire_lock() {
+  # При перезапуске через exec дескриптор 9 уже держит блокировку.
+  [ -n "${DEPLOY_REEXEC:-}" ] && return 0
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    log "Идёт другой деплой — жду освобождения…"
+    flock 9
+  fi
+}
+
+parse_ci_command() {
+  local cmd=${SSH_ORIGINAL_COMMAND:-}
+  local re='^([A-Za-z0-9][A-Za-z0-9._-]*)( ([0-9a-f]{40}))?$'
+  [[ $cmd =~ $re ]] || die "Отклонено: ожидается «<репозиторий> [sha]», получено «$cmd»"
+  CI_REPO=${BASH_REMATCH[1]}
+  CI_SHA=${BASH_REMATCH[3]}
+}
+
+script_digest() {
+  cat "$SCRIPT_DIR/deploy.sh" "$LIST_FILE" 2>/dev/null | md5sum || true
+}
+
+# Сначала всегда обновляется сам sites_configs: так применяются новые маршруты,
+# а если поменялись deploy.sh или deploy.list — скрипт перезапускается уже новым.
+# Итог (ok/failed) сохраняется в DEPLOY_SELF_RESULT и переживает перезапуск.
+sync_self() {
+  local target=$1 tag=$2
+  [ -n "${DEPLOY_REEXEC:-}" ] && return 0
+
+  local ref="" before after
+  [ "$target" = "$SELF_REPO" ] && ref=$tag
+  before=$(script_digest)
+
+  run_isolated "$SELF_ENTRY" "$ref"
+  if [ "$RUN_STATUS" -eq 0 ]; then
+    DEPLOY_SELF_RESULT=ok
   else
-    ok "Pulled new changes"
+    [ "$target" = "$SELF_REPO" ] && exit "$RUN_STATUS"
+    DEPLOY_SELF_RESULT=failed
+    warn "sites_configs не обновился — продолжаю с текущим списком проектов"
   fi
 
-  case "$strategy" in
-    static)
-      ok "Static site updated"
+  after=$(script_digest)
+  if [ "$before" != "$after" ]; then
+    log "deploy.sh или deploy.list изменились — перезапускаюсь"
+    DEPLOY_REEXEC=1 DEPLOY_SELF_RESULT=$DEPLOY_SELF_RESULT exec bash "$SCRIPT_DIR/deploy.sh" "${ARGS[@]}"
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    -h | --help)
+      usage
+      return 0
       ;;
-    docker)
-      docker compose -f "$compose" build --quiet 2>&1 && ok "Built" || { err "Build failed"; return 1; }
-      docker compose -f "$compose" up -d --remove-orphans 2>&1 && ok "Started" || { err "Start failed"; return 1; }
+    --list)
+      load_list
+      show_list
+      return 0
       ;;
-    docker-nobuild)
-      docker compose -f "$compose" up -d --remove-orphans 2>&1 && ok "Started" || { err "Start failed"; return 1; }
+    --ci)
+      parse_ci_command
+      [ "$CI_REPO" = all ] && die "Отклонено: из CI разворачивается только один проект"
+      set -- "$CI_REPO" "$CI_SHA"
       ;;
+    all) shift ;; # по старой привычке: ./deploy.sh all
+    -*) die "Неизвестный параметр $1 (см. --help)" ;;
   esac
 
-  return 0
-}
-
-reload_caddy() {
-  log "Reloading Caddy configuration..."
-  local caddy_id
-  caddy_id=$(docker ps -q -f name=caddy)
-  if [ -n "$caddy_id" ]; then
-    docker exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1 && ok "Caddy reloaded" || warn "Caddy reload failed (may need restart)"
-  else
-    warn "Caddy container not running"
+  local target=${1:-} tag=${2:-}
+  if [ -n "$tag" ] && ! [[ $tag =~ $TAG_RE ]]; then
+    die "Некорректный тег: $tag"
   fi
-}
 
-cleanup() {
-  log "Cleaning up dangling images..."
-  docker image prune -f --filter "until=24h" &>/dev/null && ok "Cleanup done" || true
-}
+  acquire_lock
+  if [ -z "${DEPLOY_REEXEC:-}" ]; then
+    printf '================================================\n'
+    printf '  Деплой пет-проектов: %s, %s\n' "$(hostname)" "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf '================================================\n'
+  fi
+  ensure_network
+  sync_self "$target" "$tag"
+  load_list
 
-# --- Main ---
+  local -a queue=()
+  if [ -z "$target" ]; then
+    queue=("${ENTRIES[@]}")
+  elif [ "$target" != "$SELF_REPO" ]; then
+    local entry
+    entry=$(find_entry "$target") || {
+      show_list
+      die "Проекта $target нет в deploy.list"
+    }
+    queue=("$entry")
+  fi
 
-if [ "${1:-}" = "--list" ]; then
-  show_list
-  exit 0
-fi
-
-TARGET="${1:-all}"
-
-echo "================================================"
-echo "  Pet Projects Deployment"
-echo "  Server: $(hostname) | $(date '+%Y-%m-%d %H:%M:%S')"
-echo "================================================"
-
-ensure_network
-
-FAILED=()
-DEPLOYED=()
-
-if [ "$TARGET" = "all" ]; then
-  for entry in "${PROJECTS[@]}"; do
-    IFS='|' read -r name compose strategy repo <<< "$entry"
-    if deploy_project "$name" "$compose" "$strategy" "$repo"; then
-      DEPLOYED+=("$name")
+  local -a deployed=() failed=()
+  case "${DEPLOY_SELF_RESULT:-}" in
+    ok) deployed+=("$SELF_REPO") ;;
+    failed) failed+=("$SELF_REPO") ;;
+  esac
+  local item
+  for item in "${queue[@]}"; do
+    run_isolated "$item" "$tag"
+    if [ "$RUN_STATUS" -eq 0 ]; then
+      deployed+=("${item%%|*}")
     else
-      FAILED+=("$name")
+      failed+=("${item%%|*}")
     fi
   done
-else
-  # Find matching project
-  FOUND=false
-  for entry in "${PROJECTS[@]}"; do
-    IFS='|' read -r name compose strategy repo <<< "$entry"
-    if [ "$name" = "$TARGET" ]; then
-      FOUND=true
-      if deploy_project "$name" "$compose" "$strategy" "$repo"; then
-        DEPLOYED+=("$name")
-      else
-        FAILED+=("$name")
-      fi
-      break
-    fi
-  done
-  if [ "$FOUND" = false ]; then
-    err "Unknown project: $TARGET"
-    echo ""
-    show_list
-    exit 1
+
+  # Неиспользуемые образы старше недели: этого окна хватает, чтобы откатиться на прошлый sha.
+  docker image prune --all --force --filter "until=168h" >/dev/null 2>&1 || true
+
+  printf '\n================================================\n'
+  [ ${#deployed[@]} -gt 0 ] && ok "Готово (${#deployed[@]}): ${deployed[*]}"
+  if [ ${#failed[@]} -gt 0 ]; then
+    err "С ошибками (${#failed[@]}): ${failed[*]}"
+    return 1
   fi
-fi
+}
 
-# Reload Caddy after deploying sites_configs or all
-if [ "$TARGET" = "all" ] || [ "$TARGET" = "sites_configs" ]; then
-  reload_caddy
-fi
-
-cleanup
-
-# Summary
-echo ""
-echo "================================================"
-echo "  Deployment Summary"
-echo "================================================"
-if [ ${#DEPLOYED[@]} -gt 0 ]; then
-  ok "Deployed (${#DEPLOYED[@]}): ${DEPLOYED[*]}"
-fi
-if [ ${#FAILED[@]} -gt 0 ]; then
-  err "Failed (${#FAILED[@]}): ${FAILED[*]}"
-  exit 1
-fi
-echo ""
+# Весь запуск — одна строка: bash дочитывает файл по ходу выполнения, а git pull
+# может заменить deploy.sh прямо во время работы.
+main "$@"; exit $?

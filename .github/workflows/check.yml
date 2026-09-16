@@ -1,0 +1,42 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Registry and configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generator tests
+        run: python -m unittest discover -s tests
+
+      - name: Generated files match projects.toml
+        run: python build.py --check
+
+      - name: Caddyfile is valid
+        run: >-
+          docker run --rm -v "$PWD/caddy:/etc/caddy:ro" caddy:2-alpine
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Compose files are valid
+        run: docker compose -f docker-compose.yml -f compose.static.yml config --quiet
+
+      - name: Shell scripts
+        run: |
+          bash -n deploy.sh deploy-remote.sh scripts/*.sh
+          shellcheck --severity=warning deploy.sh deploy-remote.sh scripts/*.sh
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

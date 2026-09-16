@@ -1,1 +1,5 @@
-*.sh text eol=lf
+# Скрипты и конфиги уходят на Linux-сервер: в рабочей копии всегда LF.
+* text=auto eol=lf
+*.png binary
+*.woff2 binary
+*.docx binary

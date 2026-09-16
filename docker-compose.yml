@@ -1,3 +1,15 @@
+# Caddy — единая точка входа (80/443) для всех сайтов на сервере.
+#
+# Конфигурацию генерирует build.py из projects.toml:
+#   caddy/Caddyfile      маршруты (+ caddy/snippets.caddy, правится руками)
+#   site/                витрина projects.dmdp.ru
+#   compose.static.yml   монтирование статических сайтов — подключается вторым -f
+#
+# Разворачивается через deploy.sh, который передаёт оба compose-файла.
+
+# Имя проекта закреплено: от него зависят имена томов, а в caddy_data лежат сертификаты.
+name: sites_configs
+
 services:
   caddy:
     image: caddy:2-alpine
@@ -6,27 +18,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp" # HTTP/3
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Каталоги, а не отдельные файлы: git pull заменяет файл новым, и смонтированный
+      # по одному файлу Caddyfile внутри контейнера остался бы старым.
+      - ./caddy:/etc/caddy:ro
+      - ./site:/srv/site:ro
       - caddy_data:/data
       - caddy_config:/config
-      # Static sites
-      - ../english_training:/srv/static/english-training:ro
-      - ../math_training:/srv/static/math-training:ro
-      - ../russkij-yazyk-2-klass-kanakina-trenazhery:/srv/static/russkij-yazyk:ro
-    networks:
-      - web
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  projects-placeholder:
-    image: nginx:alpine
-    container_name: projects-placeholder
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3005:80"
-    volumes:
-      - ./placeholder:/usr/share/nginx/html:ro
     networks:
       - web
 
@@ -35,5 +34,6 @@ volumes:
   caddy_config:
 
 networks:
+  # Общая сеть: Caddy находит контейнеры проектов по их container_name.
   web:
     external: true

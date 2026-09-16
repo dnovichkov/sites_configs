@@ -1,0 +1,50 @@
+# Общие куски конфигурации Caddy. Этот файл правится руками,
+# Caddyfile рядом генерирует build.py из projects.toml.
+
+(common) {
+	encode zstd gzip
+	header -Server
+}
+
+# Сайт в контейнере из сети web: import proxy <контейнер:порт>
+(proxy) {
+	import common
+	reverse_proxy {args[0]}
+}
+
+# Фронтенд и отдельный бэкенд для /api/*: import proxy_with_api <фронтенд> <бэкенд>
+(proxy_with_api) {
+	import common
+	handle /api/* {
+		reverse_proxy {args[1]}
+	}
+	handle {
+		reverse_proxy {args[0]}
+	}
+}
+
+# Статический сайт из репозитория, смонтированного в /srv/static/<каталог>
+# (список монтирований — в compose.static.yml).
+(static_site) {
+	import common
+	root * /srv/static/{args[0]}
+	# В корне репозитория лежит не только сайт: служебное наружу не отдаём.
+	@internal path /.* /android/* /node_modules/* /package.json /package-lock.json /capacitor.config.json
+	respond @internal 404
+	file_server
+}
+
+# Витрина: файлы из site/.
+(showcase) {
+	import common
+	root * /srv/site
+	# Имена шрифтов не меняются без переименования файла — их можно кешировать навсегда.
+	header /fonts/* Cache-Control "public, max-age=31536000, immutable"
+	header /icons/* Cache-Control "public, max-age=604800"
+	# style.css подключается с ?v=<хеш>, поэтому тоже кешируется надолго.
+	header /style.css Cache-Control "public, max-age=31536000, immutable"
+	# Саму страницу браузер перепроверяет каждый раз, иначе не увидит новый ?v=.
+	@page path / /index.html
+	header @page Cache-Control "no-cache"
+	file_server
+}

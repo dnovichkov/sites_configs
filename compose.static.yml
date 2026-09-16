@@ -1,0 +1,8 @@
+# СГЕНЕРИРОВАНО build.py из projects.toml — не редактируйте вручную.
+# Статические сайты: репозитории монтируются в контейнер Caddy только для чтения.
+services:
+  caddy:
+    volumes:
+      - ../math_training:/srv/static/math_training:ro
+      - ../english_training:/srv/static/english_training:ro
+      - ../russkij-yazyk-2-klass-kanakina-trenazhery:/srv/static/russkij-yazyk-2-klass-kanakina-trenazhery:ro

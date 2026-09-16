@@ -1,0 +1,320 @@
+/*
+ * Витрина projects.dmdp.ru. Светлая тема — лист тетради в клетку, тёмная — школьная доска.
+ * Всё выравнивается по клетке --cell: высоты строк, отступы и значки кратны ей.
+ * Разметку генерирует build.py, этот файл правится руками.
+ */
+
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/caveat-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/caveat-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+:root {
+  --cell: 24px;
+  --sheet-cells: 40;
+
+  /* Тетрадь */
+  --paper: #fdfeff;
+  --grid: #d7e2ee;
+  --ink: #1f2c73;
+  --ink-soft: #4f5b8b;
+  --margin-line: #e2474b;
+  --pen: #d1373c; /* красная ручка учителя: наведение и фокус */
+
+  --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --print: "PT Serif", Georgia, "Noto Serif", "Times New Roman", serif;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Доска */
+    --paper: #1f3a30;
+    --grid: rgb(238 243 238 / 0.07);
+    --ink: #eef3ee;
+    --ink-soft: #b8c7bd;
+    --margin-line: rgb(240 211 107 / 0.45);
+    --pen: #f0d36b; /* жёлтый мел */
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+  /*
+   * Клетка должна начинаться ровно у левого края листа. Для повторяющегося фона 50% означает
+   * сдвиг на (ширина − клетка) / 2, поэтому вычитаем половину листа и возвращаем полклетки.
+   */
+  background-position: calc(50% - (var(--sheet-cells) * var(--cell) / 2) + var(--cell) / 2) 0;
+  color: var(--ink);
+  font-family: var(--print);
+  font-size: 17px;
+  line-height: var(--cell);
+}
+
+.sheet {
+  position: relative;
+  max-width: calc(var(--sheet-cells) * var(--cell));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: calc(var(--cell) * 3) var(--cell) calc(var(--cell) * 3) calc(var(--cell) * 5);
+}
+
+/* Поля — четыре клетки, как велят в школе. */
+.sheet::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--cell) * 4 - 1px);
+  width: 2px;
+  background: var(--margin-line);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--hand);
+  font-weight: 400;
+}
+
+.masthead {
+  text-align: center;
+}
+
+h1 {
+  font-size: 64px;
+  line-height: calc(var(--cell) * 3);
+}
+
+.lead {
+  max-width: 34em;
+  margin: var(--cell) auto 0;
+  color: var(--ink-soft);
+  font-size: 19px;
+}
+
+.subject {
+  margin-top: calc(var(--cell) * 3);
+}
+
+h2 {
+  font-size: 40px;
+  line-height: calc(var(--cell) * 2);
+}
+
+.entries {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--cell) * 2);
+  margin: var(--cell) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--cell) * 3) minmax(0, 1fr);
+  column-gap: var(--cell);
+  align-items: start;
+}
+
+.entry-icon {
+  display: block;
+  width: calc(var(--cell) * 3);
+  height: calc(var(--cell) * 3);
+}
+
+img.entry-icon {
+  border-radius: 16px;
+}
+
+/* Значок без картинки: буква в квадрате, обведённом ручкой по клеткам. */
+.entry-mark {
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  font-family: var(--hand);
+  font-size: 34px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.entry-body > p {
+  margin: 0;
+}
+
+.entry-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: var(--cell);
+}
+
+.entry-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Кликабельна вся запись, а не только название. */
+.entry-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.entry-where,
+.entry-more {
+  font-size: 15px;
+}
+
+.entry-where {
+  color: var(--ink-soft);
+}
+
+.entry-more a {
+  position: relative; /* поверх растянутой основной ссылки */
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+/* Красная ручка: подчёркивание при наведении, обводка при фокусе с клавиатуры. */
+.entry:hover .entry-link,
+.entry-link:focus-visible,
+.entry-more a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--pen);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--pen);
+  outline-offset: 3px;
+}
+
+.entry-link:focus-visible {
+  outline: none;
+}
+
+.entry:has(.entry-link:focus-visible) {
+  outline: 2px solid var(--pen);
+  outline-offset: calc(var(--cell) / 2);
+}
+
+.colophon {
+  margin-top: calc(var(--cell) * 4);
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.colophon p {
+  margin: 0;
+}
+
+.colophon a {
+  color: inherit;
+  text-underline-offset: 4px;
+}
+
+.colophon a:hover {
+  text-decoration-color: var(--pen);
+}
+
+@media (max-width: 960px) {
+  body {
+    background-position: 0 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .entries {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 16px;
+  }
+
+  /* На телефоне поля в одну клетку: четыре съели бы четверть экрана. */
+  .sheet {
+    padding: calc(var(--cell) * 2) var(--cell) calc(var(--cell) * 2) calc(var(--cell) * 2);
+  }
+
+  .sheet::before {
+    left: calc(var(--cell) - 1px);
+  }
+
+  h1 {
+    font-size: 48px;
+    line-height: calc(var(--cell) * 2);
+  }
+
+  .lead {
+    font-size: 17px;
+  }
+
+  h2 {
+    font-size: 36px;
+  }
+
+  .entry {
+    grid-template-columns: calc(var(--cell) * 2) minmax(0, 1fr);
+  }
+
+  .entry-icon {
+    width: calc(var(--cell) * 2);
+    height: calc(var(--cell) * 2);
+  }
+
+  img.entry-icon {
+    border-radius: 11px;
+  }
+
+  .entry-mark {
+    font-size: 22px;
+  }
+}
+
+@media print {
+  body {
+    background: none;
+  }
+
+  .sheet::before {
+    display: none;
+  }
+}

@@ -1,0 +1,71 @@
+# СГЕНЕРИРОВАНО build.py из projects.toml — не редактируйте вручную.
+# Общие сниппеты правятся руками в snippets.caddy.
+
+import snippets.caddy
+
+# Витрина
+projects.dmdp.ru {
+	import showcase
+}
+
+dmdp.ru, www.dmdp.ru {
+	redir https://projects.dmdp.ru{uri} permanent
+}
+
+# Обучение
+
+uchim-stihi.ru {
+	import proxy learn-poetry:3000
+}
+
+dz-tracker.ru {
+	import proxy studyflow:80
+}
+
+math-training.dmdp.ru {
+	import static_site math_training
+}
+
+english-training.dmdp.ru {
+	import static_site english_training
+}
+
+russkij-yazyk.dmdp.ru {
+	import static_site russkij-yazyk-2-klass-kanakina-trenazhery
+}
+
+# Инструменты
+
+money-envelope.dmdp.ru {
+	import proxy_with_api money-envelope-frontend:80 money-envelope-backend:8000
+}
+
+gift-planner.dmdp.ru {
+	import proxy gift-planner:80
+}
+
+excel2markdown.dmdp.ru {
+	import proxy excel2md-nginx:80
+}
+
+excel2md.dmdp.ru {
+	redir https://excel2markdown.dmdp.ru{uri} permanent
+}
+
+# Игры и хобби
+
+craft-picker.dmdp.ru {
+	import proxy_with_api craft-picker-frontend:3000 craft-picker-backend:8000
+}
+
+podelki.dmdp.ru {
+	redir https://craft-picker.dmdp.ru{uri} permanent
+}
+
+netwalk-game.dmdp.ru {
+	import proxy netwalk-game:80
+}
+
+netwalkgame.dmdp.ru {
+	redir https://netwalk-game.dmdp.ru{uri} permanent
+}

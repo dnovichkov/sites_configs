@@ -1,0 +1,66 @@
+# Общий деплой на сервер. Вызывается из CI проекта после того, как образы опубликованы:
+#
+#   deploy:
+#     needs: image
+#     if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+#     uses: dnovichkov/sites_configs/.github/workflows/deploy.yml@main
+#     secrets: inherit
+#
+# Сервер принимает ключ DEPLOY_SSH_KEY только с forced command (см. INSTALL.md):
+#   command="bash /home/user/projects/sites_configs/deploy.sh --ci",restrict ssh-ed25519 AAAA… gha-deploy
+# Поэтому по SSH уходит не команда, а только «<репозиторий> <sha>», и deploy.sh проверяет их сам.
+# Пока секрет не задан, деплой пропускается с предупреждением, а не падает.
+
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Проект из deploy.list; по умолчанию — имя вызывающего репозитория
+        type: string
+        default: ""
+      sha:
+        description: Коммит, он же тег образа; по умолчанию — коммит, на котором запущен CI
+        type: string
+        default: ""
+    secrets:
+      DEPLOY_SSH_KEY:
+        required: false
+
+env:
+  DEPLOY_HOST: 91.188.212.141
+  DEPLOY_USER: user
+  # Публичные ключи сервера (как в ~/.ssh/known_hosts после первого подключения;
+  # обновить: ssh-keyscan 91.188.212.141). По ним ssh убеждается, что говорит именно с нашим сервером.
+  DEPLOY_KNOWN_HOSTS: |
+    91.188.212.141 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKVH0nVd/VlpWKUItkd/5HXYmlgJd32CPKWegmsPg1q0
+    91.188.212.141 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHc7XFJp2q5evhbMcYUksUEzQ4PzrKh2pwNXH8L+T0Uf0ZEX8lyPehq4oQfkz9DiBsJSxSgREb2lbU4sLKY8YD4=
+    91.188.212.141 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCnyFnvgccZqzn8xba8rSxhibXtNghMCDcxDMCdTMvQ83U933KSomaRB3dwa+T/PtuVm3cexZtTiHSdntiMoDGdiMznhe6SWjjy/6wphSFgMd3ghcuY1mf7DlSitjiR9+e5b96ghSZGarMZ7DyetMXquIpQJnfHVUxx0G4mSX2JJeTNzW1zpBFUFGmE9EXAukOwgMebJJ5LEYr/B1FpgpXzmby7+xwoin6cOnTJWJWycgxwrZEIAXxbYP2MVJK3wCuLdXVbzqTv0Exvi0UHJ6nUyjV+qmZlWfpc/NfR+10sFPtWQwPc/Ql37A4ibrJCi/uDu/Jz7/exyEYkVDBb2W5b0y51JIMMMSvexyMwBFJNoKzf5rrMT9jfbpzgNUESErGcTLvnrjXeo9EkY56yOhWTXVenpJtVkIo+NpICnzyVh/q1vsjD0WXarH0cwHKhsdAZbzaolpdhMbOOdlQzZWp+ohi28VlCLnRjEJIg7d1Hd42DLp+txdyxPQFqHWH+HZc=
+
+jobs:
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Деплои одного проекта идут по очереди; разные проекты на сервере упорядочивает flock.
+    concurrency:
+      group: deploy-${{ inputs.repo || github.event.repository.name }}
+      cancel-in-progress: false
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          REPO: ${{ inputs.repo || github.event.repository.name }}
+          SHA: ${{ inputs.sha || github.sha }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "::warning::DEPLOY_SSH_KEY не задан — деплой пропущен (см. INSTALL.md в sites_configs)"
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$REPO $SHA"

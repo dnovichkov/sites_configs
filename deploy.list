@@ -1,6 +1,5 @@
 # СГЕНЕРИРОВАНО build.py из projects.toml — не редактируйте вручную.
 # репозиторий|режим|ветка|compose-файлы через запятую
-sites_configs|self|main|docker-compose.yml,compose.static.yml
 learn-poetry|image|main|docker/docker-compose.prod.yml
 studyflow|image|main|docker-compose.prod.yml
 math_training|static|main|

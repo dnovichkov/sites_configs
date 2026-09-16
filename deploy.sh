@@ -107,7 +107,14 @@ git_update() {
     warn "Нет $dir — клонирую $url"
     git clone --quiet --branch "$branch" "$url" "$dir"
   fi
-  git -C "$dir" fetch --quiet "$url" "$branch"
+  # Сеть до GitHub иногда моргает: без повтора деплой падал бы на ровном месте.
+  local attempt
+  for attempt in 1 2 3; do
+    git -C "$dir" fetch --quiet "$url" "$branch" && break
+    [ "$attempt" = 3 ] && die "Не удалось получить $branch из $url за три попытки"
+    warn "git fetch не удался, повторяю через $((attempt * 5)) с"
+    sleep $((attempt * 5))
+  done
   if [ -n "$ref" ]; then
     git -C "$dir" merge-base --is-ancestor "$ref" FETCH_HEAD ||
       die "Коммит $ref не найден в ветке $branch — деплоятся только коммиты из неё"

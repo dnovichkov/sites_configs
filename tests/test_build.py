@@ -190,7 +190,7 @@ class RenderTest(unittest.TestCase):
     def test_static_mounts_and_deploy_list(self):
         self.assertIn("../static_repo:/srv/static/static_repo:ro", build.render_static_compose(self.reg))
         rows = build.render_deploy_list(self.reg).splitlines()
-        self.assertIn("sites_configs|self|main|docker-compose.yml,compose.static.yml", rows)
+        self.assertFalse([r for r in rows if r.startswith("sites_configs|")], "sites_configs разворачивается отдельно")
         self.assertIn("static_repo|static|main|", rows)
         self.assertIn("Full|image|master|docker-compose.prod.yml", rows)
 

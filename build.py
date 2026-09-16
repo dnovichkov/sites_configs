@@ -34,9 +34,9 @@ SITE_DIR = ROOT / "site"
 
 NOTICE = "СГЕНЕРИРОВАНО build.py из projects.toml — не редактируйте вручную."
 
-# Сам sites_configs тоже разворачивается через deploy.sh — первой строкой deploy.list.
+# Сам sites_configs deploy.sh разворачивает отдельно, перед любым проектом, поэтому
+# в deploy.list его нет, а имя занято: проект с таким репозиторием был бы развёрнут дважды.
 SELF_REPO = "sites_configs"
-SELF_COMPOSE = ("docker-compose.yml", "compose.static.yml")
 
 DEPLOY_MODES = ("image", "build", "static")
 DEFAULT_COMPOSE = "docker-compose.prod.yml"
@@ -443,7 +443,6 @@ def render_deploy_list(reg: Registry) -> str:
     rows = [
         f"# {NOTICE}",
         "# репозиторий|режим|ветка|compose-файлы через запятую",
-        f"{SELF_REPO}|self|main|{','.join(SELF_COMPOSE)}",
     ]
     for p in reg.projects:
         if d := p.deploy:

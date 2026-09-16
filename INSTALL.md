@@ -35,22 +35,29 @@ sudo ufw enable
 
 `deploy.sh` клонирует и обновляет репозитории по HTTPS, `ssh -A` больше не нужен.
 
-- **Код.** Публичным репозиториям ничего не нужно. Для приватных — fine-grained токен
-  с правом *Contents: read* на нужные репозитории:
+- **Код.** Публичным репозиториям ничего не нужно. Приватным — deploy key: отдельный
+  SSH-ключ на каждый репозиторий, только чтение, без срока действия. Со своей машины
+  (нужны `gh auth login` и SSH-доступ к серверу):
 
   ```bash
-  git config --global credential.helper store
-  git ls-remote https://github.com/dnovichkov/<приватный-репозиторий>.git
-  # логин — dnovichkov, пароль — токен; git запомнит его
+  scripts/add-deploy-key.sh craft-picker
   ```
+
+  Скрипт заводит ключ на сервере, добавляет его в репозиторий и настраивает git так, что
+  https-адрес, который использует `deploy.sh`, идёт через этот ключ (`url.<…>.insteadOf`).
+  Уже подключены craft-picker, learn-poetry и money-envelope; токены для git не нужны.
 
 - **Образы.** Пакеты в ghcr.io по умолчанию приватные, даже у публичного репозитория.
   Сделайте их публичными (страница пакета → *Package settings* → *Change visibility*)
-  или один раз войдите токеном (classic) с правом `read:packages`:
+  или войдите токеном (classic) с одним правом `read:packages`:
 
   ```bash
   echo "<токен>" | docker login ghcr.io -u dnovichkov --password-stdin
   ```
+
+  Сейчас на сервере токен, который действует до 14.09.2027. Чтобы продлить: на странице
+  токена *Regenerate token* → новый срок (у classic-токена можно выбрать «No expiration»)
+  → повторить `docker login` с новым значением.
 
 ## 4. Ключ деплоя для CI
 

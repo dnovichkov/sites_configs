@@ -50,7 +50,10 @@ projects.toml ── python build.py ──▶ caddy/Caddyfile      маршру
    ```
 
 3. `python build.py`, коммит, push. Для нового репозитория — ещё
-   `scripts/set-deploy-secrets.sh ~/.ssh/pets_deploy`, чтобы у него появился ключ деплоя.
+   `scripts/set-deploy-secrets.sh ~/.ssh/pets_deploy`, чтобы у него появился ключ деплоя,
+   а если он приватный — `scripts/add-deploy-key.sh <репозиторий>`, чтобы сервер мог его читать.
+
+Скрипты — для Git Bash: `bash` из PowerShell может оказаться WSL, где диск C лежит в `/mnt/c`.
 
 DNS трогать не нужно: `*.dmdp.ru` уже указывает на сервер. Отдельному домену
 (как `uchim-stihi.ru`) нужна A-запись у регистратора.

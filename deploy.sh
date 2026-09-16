@@ -29,7 +29,10 @@ readonly GITHUB_OWNER="${GITHUB_OWNER:-dnovichkov}"
 # (см. INSTALL.md); вернуть SSH можно так: GIT_URL_TEMPLATE='git@github.com:%s/%s.git'.
 readonly GIT_URL_TEMPLATE="${GIT_URL_TEMPLATE:-https://github.com/%s/%s.git}"
 readonly LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pets-deploy.lock}"
-readonly WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-180}"
+# Столько сайт может пролежать, прежде чем сработает откат; самому медленному сервису
+# (craft-picker: миграции и start_period 40s) хватает с запасом.
+readonly WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-120}"
+readonly ROLLBACK_TAG="rollback"
 
 readonly SELF_REPO="sites_configs"
 readonly SELF_ENTRY="$SELF_REPO|self|main|docker-compose.yml,compose.static.yml"
@@ -182,17 +185,74 @@ running_tag() {
   done
 }
 
-# Что делать, если новые контейнеры не стали healthy за DEPLOY_WAIT_TIMEOUT секунд.
-#   $1 — репозиторий, $2 — тег, который выкатывали,
-#   $3 — тег, с которым проект работал до деплоя (пусто, если первый запуск
-#        или контейнеры были собраны на сервере, а не взяты из ghcr.io).
-# Доступно: compose <аргументы…> — docker compose этого проекта; IMAGE_TAG; warn/err.
-# Функция обязана вернуть ненулевой код: деплой не удался, и CI должен покраснеть,
-# даже если откат прошёл успешно.
+# Образы, на которых сервисы проекта работают до деплоя: «сервис=id образа».
+# Запоминаются именно id: прежний образ мог быть собран на сервере или иметь тег latest,
+# который pull уже перенёс на новую сборку.
+SNAPSHOT=()
+snapshot_images() {
+  SNAPSHOT=()
+  local id entry
+  for id in $(compose ps -q 2>/dev/null || true); do
+    entry=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}={{.Image}}' "$id" 2>/dev/null) ||
+      continue
+    SNAPSHOT+=("$entry")
+  done
+}
+
+snapshot_image() {
+  local entry
+  for entry in "${SNAPSHOT[@]}"; do
+    if [ "${entry%%=*}" = "$1" ]; then
+      printf '%s\n' "${entry#*=}"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# «сервис образ» для каждого сервиса проекта при текущем IMAGE_TAG.
+service_images() {
+  compose config --format json | python3 -c '
+import json, sys
+for name, service in json.load(sys.stdin)["services"].items():
+    print(name, service.get("image", ""))
+'
+}
+
+# Новые контейнеры не стали healthy: сервисы с нашими образами (ghcr.io/<owner>/…) возвращаются
+# к образам, на которых работали до деплоя. Откатываются только образы — compose-файл остаётся
+# новым, и миграции базы, если новая версия успела их применить, не отменяются.
+# Код возврата всегда ненулевой: выкатка не удалась, даже если откат прошёл.
 on_failed_rollout() {
-  local repo=$1 tag=$2 previous=$3
-  err "$repo: контейнеры с тегом $tag не стали healthy за ${WAIT_TIMEOUT}s"
-  # TODO(вы): решить, откатываться ли на $previous, и как это сделать.
+  local repo=$1 tag=$2
+  err "$repo: контейнеры с тегом $tag не поднялись (ждали до ${WAIT_TIMEOUT}s)"
+  if [ ${#SNAPSHOT[@]} -eq 0 ]; then
+    warn "До деплоя контейнеры проекта не работали — откатываться не на что"
+    return 1
+  fi
+
+  local mapping service image old
+  if ! mapping=$(service_images); then
+    err "Не удалось прочитать compose-конфигурацию — откатите вручную"
+    return 1
+  fi
+  while read -r service image; do
+    case "$image" in
+      "ghcr.io/$GITHUB_OWNER/"*) ;;
+      *) continue ;; # postgres, redis и другие чужие образы деплой не меняет
+    esac
+    old=$(snapshot_image "$service")
+    # Сервис, которого до деплоя не было, остаётся на новом образе.
+    docker tag "${old:-$image}" "${image%:*}:$ROLLBACK_TAG"
+  done <<<"$mapping"
+
+  log "Откатываю $repo к образам, на которых он работал до деплоя"
+  export IMAGE_TAG=$ROLLBACK_TAG
+  if compose up -d --no-build --pull never --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"; then
+    warn "$repo снова работает на прежних образах, а выкатка $tag не удалась"
+  else
+    err "$repo: откат тоже не удался — проверьте вручную (docker compose ps, logs)"
+  fi
   return 1
 }
 
@@ -200,6 +260,7 @@ deploy_image() {
   local repo=$1 tag=$2
   local previous image
   previous=$(running_tag)
+  snapshot_images
   export IMAGE_TAG=$tag
 
   log "Образы с тегом $tag${previous:+ (сейчас работает $previous)}"
@@ -216,7 +277,7 @@ deploy_image() {
   fi
   compose ps --all || true
   compose logs --no-color --tail 40 || true
-  on_failed_rollout "$repo" "$tag" "$previous"
+  on_failed_rollout "$repo" "$tag"
 }
 
 deploy_build() {

@@ -125,8 +125,9 @@ workflow: *Settings* → *Actions* → *General* → *Access* →
 | money-envelope | — | Первый деплой новой версии уберёт старые backend и redis (`--remove-orphans`); потом можно удалить их том: `docker volume rm money-envelope_redis_data` |
 | netwalk_game, статические сайты | — | — |
 
-Нужен свежий Docker Compose (`docker compose version` — 2.24 или новее): `deploy.sh`
-ждёт healthcheck через `up --wait`, а learn-poetry использует необязательные `env_file`.
+На сервере нужны `git`, `python3` (им `deploy.sh` читает compose-конфигурацию при откате)
+и свежий Docker Compose (`docker compose version` — 2.24 или новее): `deploy.sh` ждёт
+healthcheck через `up --wait`, а learn-poetry использует необязательные `env_file`.
 
 ## Полезные команды
 

@@ -62,6 +62,10 @@ podelki.dmdp.ru {
 	redir https://craft-picker.dmdp.ru{uri} permanent
 }
 
+snowflakes.dmdp.ru {
+	import proxy snowflakes:80
+}
+
 netwalk-game.dmdp.ru {
 	import proxy netwalk-game:80
 }

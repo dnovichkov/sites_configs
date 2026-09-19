@@ -50,6 +50,18 @@ title = "Игры и хобби"
 # ── Обучение ─────────────────────────────────────────────────────────────────
 
 [[project]]
+id = "sad-slogov"
+title = "Сад слогов"
+description = "Чтение по слогам к «Букварю» Жуковой: семь игр, которые ребёнок проходит вместе со взрослым."
+category = "learning"
+icon = "sad-slogov.svg"
+web = "sad-slogov.dmdp.ru"
+upstream = "sad-slogov:80"
+
+[project.deploy]
+repo = "sad-slogov"
+
+[[project]]
 id = "uchim-stihi"
 title = "Учим стихи"
 description = "Помогает детям 3–12 лет выучить стихотворение к празднику: по шагам и в игровой форме."

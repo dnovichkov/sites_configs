@@ -56,6 +56,10 @@ excel2md.dmdp.ru {
 	redir https://excel2markdown.dmdp.ru{uri} permanent
 }
 
+stats.dmdp.ru {
+	import proxy umami:3000
+}
+
 # Игры и хобби
 
 craft-picker.dmdp.ru {

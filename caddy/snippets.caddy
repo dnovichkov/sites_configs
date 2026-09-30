@@ -4,6 +4,15 @@
 (common) {
 	encode zstd gzip
 	header -Server
+
+	# Аналитика (Umami из репозитория stats): счётчик и приём событий на домене самого сайта.
+	# Запрос к своему домену не режут блокировщики и не запрещает CSP сайта.
+	# Открыты только эти два адреса: панель живёт на отдельном домене из projects.toml.
+	@analytics path /umami/script.js /umami/api/send
+	handle @analytics {
+		uri strip_prefix /umami
+		reverse_proxy umami:3000
+	}
 }
 
 # Сайт в контейнере из сети web: import proxy <контейнер:порт>

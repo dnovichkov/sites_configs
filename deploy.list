@@ -9,6 +9,7 @@ russkij-yazyk-2-klass-kanakina-trenazhery|static|main|
 money-envelope|image|main|docker-compose.prod.yml
 gift-planner|image|main|docker-compose.prod.yml
 Excel2Markdown|image|master|docker-compose.prod.yml
+stats|image|main|docker-compose.prod.yml
 craft-picker|image|main|docker-compose.prod.yml
 Snowflakes|image|main|docker-compose.prod.yml
 netwalk_game|image|main|docker-compose.prod.yml

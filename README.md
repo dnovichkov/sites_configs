@@ -77,6 +77,18 @@ jobs:
     secrets: inherit
 ```
 
+## Аналитика
+
+Одна Umami на все сайты: скрытый проект `stats` в реестре, панель — `stats.dmdp.ru`.
+Сниппет `common` отдаёт счётчик на домене каждого сайта, поэтому сайту достаточно одной строки:
+
+```html
+<script defer src="/umami/script.js" data-website-id="<id сайта из панели>"></script>
+```
+
+Как завести сайт в панели и что задать в проектах с готовой обвязкой (money-envelope,
+studyflow) — в README репозитория [stats](https://github.com/dnovichkov/stats).
+
 ## Контракт веб-проекта
 
 ```yaml

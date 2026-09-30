@@ -162,6 +162,19 @@ aliases = ["excel2md.dmdp.ru"]
 repo = "Excel2Markdown"
 branch = "master"
 
+# Umami — общая аналитика всех сайтов; на витрине её нет. Сайты берут счётчик со своего
+# домена по /umami/script.js (сниппет common в caddy/snippets.caddy), а здесь — панель.
+[[project]]
+id = "stats"
+title = "Статистика"
+category = "tools"
+hidden = true
+web = "stats.dmdp.ru"
+upstream = "umami:3000"
+
+[project.deploy]
+repo = "stats"
+
 [[project]]
 id = "tishina"
 title = "Тишина"

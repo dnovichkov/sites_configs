@@ -127,7 +127,8 @@ workflow: *Settings* → *Actions* → *General* → *Access* →
 | gift-planner | Сейчас прод работает без Supabase: данные хранятся только в браузере. Чтобы включить вход и синхронизацию, заведите в GitHub vars репозитория `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` — Vite вшивает их при сборке, так что нужен новый коммит или перезапуск CI | — |
 | learn-poetry | Проверить секреты `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY`: без них CI не соберёт образ | Проверить, что есть `docker/.env`. Прямо перед первым деплоем — `docker rm -f learn-poetry`: старый контейнер принадлежит compose-проекту `docker`, новый называется `learn-poetry` |
 | craft-picker | — | Секреты читаются из `.env` рядом с compose-файлом; если они лежат в `.env.prod` — `ln -s .env.prod .env` |
-| studyflow | — | В `.env` должны быть `VITE_SUPABASE_*` (подставляются при старте контейнера). Umami поднимается, только если добавить `COMPOSE_PROFILES=analytics`, `UMAMI_DB_PASSWORD` и `UMAMI_APP_SECRET` |
+| studyflow | — | В `.env` должны быть `VITE_SUPABASE_*` (подставляются при старте контейнера). Строка `VITE_UMAMI_WEBSITE_ID=` с пустым значением выключает аналитику |
+| stats | — | Первый запуск — `bash stats/scripts/first-run.sh`: создаёт `.env`, меняет пароль Umami по умолчанию и заводит сайты. До него деплой проекта падает: без `.env` Umami не стартует |
 | Excel2Markdown | — | После первого удачного деплоя можно удалить ненужный том: `docker volume rm excel2markdown_static_files` |
 | money-envelope | — | Первый деплой новой версии уберёт старые backend и redis (`--remove-orphans`); потом можно удалить их том: `docker volume rm money-envelope_redis_data` |
 | netwalk_game, статические сайты | — | — |

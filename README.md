@@ -86,6 +86,7 @@ jobs:
 <script defer src="/umami/script.js" data-website-id="<id сайта из панели>"></script>
 ```
 
+У витрины эту строку пишет `build.py` — по полю `analytics` в `[site]`.
 Как завести сайт в панели и что задать в проектах с готовой обвязкой (money-envelope,
 studyflow) — в README репозитория [stats](https://github.com/dnovichkov/stats).
 

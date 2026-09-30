@@ -51,6 +51,7 @@ REPO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 BRANCH_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 RELPATH_RE = re.compile(r"(?!/)(?!.*(^|/)\.\.(/|$))[A-Za-z0-9._/-]+")
 ICON_RE = re.compile(r"[a-z0-9][a-z0-9._-]*\.(svg|png|webp)")
+UUID_RE = re.compile(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
 class RegistryError(Exception):
@@ -67,6 +68,7 @@ class Site:
     lead: str
     redirects: tuple[str, ...]
     github: str | None
+    analytics: str | None  # Website ID витрины в Umami; None — счётчика на витрине нет
 
 
 @dataclass(frozen=True)
@@ -143,7 +145,7 @@ class Registry:
 
 # ── Чтение реестра ───────────────────────────────────────────────────────────
 
-SITE_FIELDS = {"host": str, "title": str, "lead": str, "redirects": list, "github": str}
+SITE_FIELDS = {"host": str, "title": str, "lead": str, "redirects": list, "github": str, "analytics": str}
 CATEGORY_FIELDS = {"id": str, "title": str}
 PROJECT_FIELDS = {
     "id": str,
@@ -240,6 +242,7 @@ def load_registry(path: Path = REGISTRY) -> Registry:
         lead=s["lead"],
         redirects=tuple(s.get("redirects", ())),
         github=s.get("github"),
+        analytics=s.get("analytics"),
     )
     categories = tuple(
         Category(**_fields(c, f"[[category]] №{i}", CATEGORY_FIELDS, {"id", "title"}))
@@ -279,6 +282,8 @@ def validate(reg: Registry) -> list[str]:
         claim(host, "[site] redirects")
     if site.github is not None and not REPO_RE.fullmatch(site.github):
         bad("[site]", f"github: некорректное имя пользователя {site.github!r}")
+    if site.analytics is not None and not UUID_RE.fullmatch(site.analytics):
+        bad("[site]", f"analytics: ожидается Website ID из Umami, получено {site.analytics!r}")
 
     category_ids = [c.id for c in reg.categories]
     for cid in sorted({c for c in category_ids if category_ids.count(c) > 1}):
@@ -475,7 +480,7 @@ PAGE = Template("""\
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="/fonts/caveat-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css?v=$css_version">
-<script type="application/ld+json">$json_ld</script>
+$analytics<script type="application/ld+json">$json_ld</script>
 </head>
 <body>
 <main class="sheet">
@@ -571,6 +576,11 @@ def render_index(reg: Registry) -> str:
     }
     json_text = json.dumps(json_ld, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
+    # Счётчик общей Umami: /umami/script.js на домене витрины отдаёт сниппет common.
+    analytics = ""
+    if site.analytics:
+        analytics = f'<script defer src="/umami/script.js" data-website-id="{_e(site.analytics)}"></script>\n'
+
     return PAGE.substitute(
         notice=NOTICE,
         title=_e(site.title),
@@ -578,6 +588,7 @@ def render_index(reg: Registry) -> str:
         lead_prose=_prose(site.lead),
         canonical=_e(canonical),
         css_version=_file_version(SITE_DIR / "style.css"),
+        analytics=analytics,
         json_ld=json_text,
         sections="\n\n".join(sections),
         footer=footer,

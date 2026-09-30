@@ -34,6 +34,8 @@ title = "Проекты DMDP"
 lead = "Сайты и Android-приложения: тренажёры для школьников, полезные инструменты и игры."
 redirects = ["dmdp.ru", "www.dmdp.ru"]
 github = "dnovichkov"
+# Website ID витрины в Umami (websites.list в репозитории stats); без поля счётчика на витрине нет.
+analytics = "692112cb-1e8e-476e-b337-07a1e9c2b8e5"
 
 [[category]]
 id = "learning"

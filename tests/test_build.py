@@ -205,6 +205,18 @@ class RenderTest(unittest.TestCase):
         self.assertIn("&lt;b&gt;Моро&lt;/b&gt;", page)
         self.assertNotIn("<b>Моро</b>", page)
 
+    def test_index_carries_the_counter_only_when_the_site_has_one(self):
+        self.assertNotIn("/umami/script.js", build.render_index(self.reg))
+        website_id = "692112cb-1e8e-476e-b337-07a1e9c2b8e5"
+        counted = replace(self.reg, site=replace(self.reg.site, analytics=website_id))
+        self.assertIn(
+            f'<script defer src="/umami/script.js" data-website-id="{website_id}"></script>\n',
+            build.render_index(counted),
+        )
+        self.assertEqual(build.validate(counted), [])
+        mistyped = replace(self.reg, site=replace(self.reg.site, analytics="projects.example.ru"))
+        self.assertIn("analytics", "\n".join(build.validate(mistyped)))
+
     def test_output_is_stable(self):
         self.assertEqual(build.render_index(self.reg), build.render_index(self.reg))
 

@@ -4,7 +4,9 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -205,6 +207,40 @@ class RenderTest(unittest.TestCase):
 
     def test_output_is_stable(self):
         self.assertEqual(build.render_index(self.reg), build.render_index(self.reg))
+
+
+class LintSiblingsTest(unittest.TestCase):
+    def warnings(self, image: str) -> list[str]:
+        """Предупреждения для соседнего репозитория foo с одним сервисом из образа image."""
+        reg = registry(
+            """
+            [[project]]
+            id = "foo"
+            title = "Foo"
+            description = "d"
+            category = "tools"
+            web = "foo.example.ru"
+            upstream = "foo:80"
+
+            [project.deploy]
+            repo = "foo"
+            """
+        )
+        reg = replace(reg, site=replace(reg.site, github="owner"))
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "foo"
+            repo.mkdir()
+            (repo / "docker-compose.prod.yml").write_text(
+                f"services:\n  foo:\n    image: {image}\n    container_name: foo\n", encoding="utf-8"
+            )
+            with mock.patch.object(build, "ROOT", Path(tmp) / "sites_configs"):
+                return build.lint_siblings(reg)
+
+    def test_own_image_must_follow_image_tag(self):
+        self.assertTrue(any("IMAGE_TAG" in w for w in self.warnings("ghcr.io/owner/foo:latest")))
+
+    def test_third_party_image_has_nothing_to_pin(self):
+        self.assertEqual(self.warnings("ghcr.io/umami-software/umami:3.3.1"), [])
 
 
 class ProseTest(unittest.TestCase):

@@ -376,7 +376,9 @@ def lint_siblings(reg: Registry) -> list[str]:
                 )
         if re.search(r"^\s*ports:", text, re.M):
             warnings.append(f"{p.id}: в {d.repo}/{d.compose_file} есть ports — Caddy ходит через сеть web, порты не нужны")
-        if d.mode == "image" and "IMAGE_TAG" not in text:
+        # Проект из одних чужих образов (Umami, Postgres) CI не собирает: привязывать к коммиту нечего.
+        own_images = f"ghcr.io/{reg.site.github}/" if reg.site.github else ""
+        if d.mode == "image" and own_images in text and "IMAGE_TAG" not in text:
             warnings.append(
                 f"{p.id}: {d.repo}/{d.compose_file} не использует ${{IMAGE_TAG}} — "
                 "deploy.sh не сможет выкатить конкретный коммит"
